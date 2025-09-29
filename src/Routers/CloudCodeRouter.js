@@ -1,8 +1,11 @@
 import PromiseRouter from '../PromiseRouter';
 import Parse from 'parse/node';
 import rest from '../rest';
+import { isEmpty } from 'lodash';
 const triggers = require('../triggers');
 const middleware = require('../middlewares');
+const fs = require('fs');
+const path = require('path');
 
 function formatJobSchedule(job_schedule) {
   if (typeof job_schedule.startAfter === 'undefined') {
@@ -52,6 +55,36 @@ export class CloudCodeRouter extends PromiseRouter {
       '/cloud_code/jobs/:objectId',
       middleware.promiseEnforceMasterKeyAccess,
       CloudCodeRouter.deleteJob
+    );
+    this.route(
+      'GET',
+      '/releases/latest',
+      middleware.promiseEnforceMasterKeyAccess,
+      CloudCodeRouter.getCloudCode
+    );
+    this.route(
+      'GET',
+      '/scripts/:folder/:file',
+      middleware.promiseEnforceMasterKeyAccess,
+      CloudCodeRouter.getCloudFile
+    );
+    this.route(
+      'POST',
+      '/scripts/:folder/:file',
+      middleware.promiseEnforceMasterKeyAccess,
+      CloudCodeRouter.saveCloudFile
+    );
+    this.route(
+      'GET',
+      '/scripts/:folder1/:folder2/:file',
+      middleware.promiseEnforceMasterKeyAccess,
+      CloudCodeRouter.getCloudFile
+    );
+    this.route(
+      'POST',
+      '/scripts/:folder1/:folder2/:file',
+      middleware.promiseEnforceMasterKeyAccess,
+      CloudCodeRouter.saveCloudFile
     );
   }
 
@@ -119,5 +152,87 @@ export class CloudCodeRouter extends PromiseRouter {
           response,
         };
       });
+  }
+
+  static saveCloudFile(req) {
+    const config = req.config || {};
+    const dashboardOptions = config.dashboardOptions || {};
+    if (!dashboardOptions.cloudFileEdit) {
+      throw new Parse.Error(Parse.Error.OBJECT_NOT_FOUND, 'Dashboard file editing is not active.');
+    }
+    const file = req.url.replace('/scripts', '');
+    const dirName = __dirname.split('lib')[0].split('node_modules')[0];
+    const filePath = path.join(dirName, file);
+    const data = req.body.data;
+    if (!data) {
+      throw new Parse.Error(Parse.Error.INTERNAL_SERVER_ERROR, 'No data to save.');
+    }
+    fs.writeFileSync(filePath, data);
+    return {
+      response: 'This file has been saved.',
+    };
+  }
+  static getCloudFile(req) {
+    const config = req.config || {};
+    const dashboardOptions = config.dashboardOptions || {};
+    if (!(dashboardOptions.cloudFileView || dashboardOptions.cloudFileEdit)) {
+      throw new Parse.Error(Parse.Error.OBJECT_NOT_FOUND, 'Dashboard file viewing is not active.');
+    }
+    const file = req.url.replace('/scripts', '');
+    const dirName = __dirname.split('lib')[0].split('node_modules')[0];
+    const filePath = path.join(dirName, file);
+    if (!fs.existsSync(filePath) || !fs.lstatSync(filePath).isFile()) {
+      throw new Parse.Error(Parse.Error.INTERNAL_SERVER_ERROR, 'Invalid file url.');
+    }
+    let content = fs.readFileSync(filePath, 'utf8');
+    if(isEmpty(content)){
+      return {
+        response: `// ${file}\n`,
+      };
+    }
+    return {
+      response: content,
+    };
+  }
+  static getCloudCode(req) {
+    const config = req.config || {};
+    const dashboardOptions = config.dashboardOptions || {};
+    if (!(dashboardOptions.cloudFileView || dashboardOptions.cloudFileEdit)) {
+      throw new Parse.Error(Parse.Error.OBJECT_NOT_FOUND, 'Dashboard file viewing is not active.');
+    }
+    const dirName = __dirname.split('lib')[0].split('node_modules')[0];
+
+    const cloudLocation = ('' + dashboardOptions.cloud).replace(dirName, '');
+    const cloudFiles = [];
+    const getAllFiles = (dirPath, arrayOfFiles = []) => {
+      const files = fs.readdirSync(dirPath);
+    
+      files.forEach(file => {
+        const filePath = path.join(dirPath, file);
+        if (fs.statSync(filePath).isDirectory()) {
+          getAllFiles(filePath, arrayOfFiles);
+        } else {
+          arrayOfFiles.push(filePath.replace(dirName, ''));
+        }
+      });
+    
+      return arrayOfFiles;
+    }
+    const allFiles = getAllFiles(path.join(dirName, path.dirname(dashboardOptions.cloud)));
+
+    cloudFiles.push(...allFiles);
+
+    const response = {};
+    for (const file of cloudFiles) {
+      response[file] = new Date();
+    }
+    return {
+      response: [
+        {
+          checksums: JSON.stringify({ cloud: response }),
+          userFiles: JSON.stringify({ cloud: response }),
+        },
+      ],
+    };
   }
 }

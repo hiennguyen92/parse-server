@@ -161,6 +161,13 @@ module.exports.ParseServerOptions = {
     type: 'CustomPagesOptions',
     default: {},
   },
+  dashboardOptions: {
+    env: 'PARSE_SERVER_DASHBOARD_OPTIONS',
+    help:
+      'Options for Parse dashboard. Caution, do not use cloudFileEdit on a multi-instance production server.',
+    action: parsers.objectParser,
+    default: {},
+  },
   databaseAdapter: {
     env: 'PARSE_SERVER_DATABASE_ADAPTER',
     help:
