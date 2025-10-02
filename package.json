@@ -1,5 +1,5 @@
 {
-  "name": "parse-server",
+  "name": "@hiennguyen92/parse-server",
   "version": "8.2.5-alpha.1",
   "description": "An express module providing a Parse-compatible API server",
   "main": "lib/index.js",
